@@ -1,0 +1,6 @@
+numpy<2
+python-chess==1.999
+torch==2.2.2+cpu --extra-index-url https://download.pytorch.org/whl/cpu
+pygame==2.5.2
+cairosvg==2.7.1
+plotly==5.22.0
