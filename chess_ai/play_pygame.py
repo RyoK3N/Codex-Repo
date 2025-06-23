@@ -22,14 +22,26 @@ for filename in os.listdir(ASSET_DIR):
         PIECE_IMAGES[name] = pygame.image.load(io.BytesIO(png_bytes))
         PIECE_IMAGES[name] = pygame.transform.scale(PIECE_IMAGES[name], (SQUARE_SIZE, SQUARE_SIZE))
 
-def draw_board(screen, board):
-    colors = [pygame.Color('white'), pygame.Color('gray')]
+def draw_board(screen, board, selected=None, targets=None):
+    """Draw the board, pieces and optional highlights."""
+    colors = [pygame.Color("white"), pygame.Color("gray")]
     for rank in range(8):
         for file in range(8):
+            square = chess.square(file, rank)
             color = colors[(rank + file) % 2]
             rect = pygame.Rect(file * SQUARE_SIZE, (7 - rank) * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE)
             pygame.draw.rect(screen, color, rect)
-            piece = board.piece_at(chess.square(file, rank))
+
+            # highlight selected square
+            if selected is not None and square == selected:
+                pygame.draw.rect(screen, pygame.Color("orange"), rect, 3)
+
+            # highlight possible target squares
+            if targets and square in targets:
+                center = rect.center
+                pygame.draw.circle(screen, pygame.Color("blue"), center, SQUARE_SIZE // 8)
+
+            piece = board.piece_at(square)
             if piece:
                 key = f"Chess_{piece.symbol().lower()}{'l' if piece.color == chess.WHITE else 'd'}t45"
                 img = PIECE_IMAGES.get(key)
@@ -82,10 +94,20 @@ def play(model_path):
     policy.load_state_dict(torch.load(model_path))
     state = env.reset()
     turn_white = True
+    selected = None
     running = True
     while running:
-        draw_board(screen, env.board)
+        # compute potential target squares for highlighting
+        targets = []
+        if selected is not None:
+            for uci in env.legal_moves:
+                mv = chess.Move.from_uci(uci)
+                if mv.from_square == selected:
+                    targets.append(mv.to_square)
+
+        draw_board(screen, env.board, selected, targets)
         pygame.display.flip()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -93,28 +115,39 @@ def play(model_path):
                 x, y = event.pos
                 file = x // SQUARE_SIZE
                 rank = 7 - (y // SQUARE_SIZE)
-                if not hasattr(play, '_selected'):
-                    play._selected = chess.square(file, rank)
+                square = chess.square(file, rank)
+                piece = env.board.piece_at(square)
+
+                if selected is None:
+                    if piece and piece.color == chess.WHITE:
+                        selected = square
                 else:
-                    target = chess.square(file, rank)
-                    move = chess.Move(play._selected, target)
-                    uci = move.uci()
-                    if uci in env.legal_moves:
-                        env.board.push(move)
+                    move = chess.Move(selected, square)
+                    if move.uci() in env.legal_moves:
                         animate_move(screen, env.board, move)
+                        state, reward, done = env.step(move.uci())
+                        selected = None
                         turn_white = False
-                    play._selected = None
-        if not turn_white:
+                        if done:
+                            running = False
+                    elif piece and piece.color == chess.WHITE:
+                        selected = square
+                    else:
+                        selected = None
+
+        if not turn_white and running:
             move_uci = select_move(policy, state, env.legal_moves)
             move = chess.Move.from_uci(move_uci)
             animate_move(screen, env.board, move)
             state, reward, done = env.step(move_uci)
             turn_white = True
             if done:
-                draw_board(screen, env.board)
-                pygame.display.flip()
-                plot_board(env.board)
                 running = False
+
+        if not running:
+            draw_board(screen, env.board)
+            pygame.display.flip()
+            plot_board(env.board)
     pygame.quit()
 
 if __name__ == '__main__':

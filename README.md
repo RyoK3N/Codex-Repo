@@ -39,6 +39,10 @@ Moves are entered in UCI notation (e.g., `e2e4`).
 python -m chess_ai.play_pygame --model agent.pth
 ```
 
+When a piece is selected, the square is highlighted and all legal target squares
+are marked. Click a highlighted square to move the piece. The AI will then make
+its move in response.
+
 ## Repository Structure
 
 - `chess_ai/` – Package containing the environment, agent, and scripts
