@@ -3,6 +3,7 @@ import torch
 import torch.optim as optim
 import chess
 import torch.nn.functional as F
+import plotly.graph_objects as go
 from .chess_env import ChessEnv
 from .rl_agent import PolicyNetwork, select_move
 
@@ -12,6 +13,7 @@ def self_play_episode(env, policy, optimizer, gamma=0.99):
     log_probs = []
     rewards = []
     done = False
+    total_reward = 0.0
     while not done:
         legal = env.legal_moves
         move = select_move(policy, state, legal)
@@ -19,6 +21,7 @@ def self_play_episode(env, policy, optimizer, gamma=0.99):
         move_index = chess.SQUARE_NAMES.index(move[:2])
         log_prob = F.log_softmax(logits, dim=0)[move_index]
         state, reward, done = env.step(move)
+        total_reward += reward
         log_probs.append(log_prob)
         rewards.append(reward)
     returns = []
@@ -33,18 +36,24 @@ def self_play_episode(env, policy, optimizer, gamma=0.99):
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
+    return total_reward
 
 
 def train(episodes: int, checkpoint: str):
     env = ChessEnv()
     policy = PolicyNetwork()
     optimizer = optim.Adam(policy.parameters(), lr=0.001)
+    rewards = []
     for ep in range(episodes):
-        self_play_episode(env, policy, optimizer)
+        ep_reward = self_play_episode(env, policy, optimizer)
+        rewards.append(ep_reward)
         if (ep + 1) % 50 == 0:
             torch.save(policy.state_dict(), checkpoint)
             print(f"Episode {ep+1}: checkpoint saved")
     torch.save(policy.state_dict(), checkpoint)
+    fig = go.Figure(data=go.Scatter(y=rewards, mode="lines"))
+    fig.update_layout(title="Episode Reward", xaxis_title="Episode", yaxis_title="Reward")
+    fig.show()
 
 
 if __name__ == "__main__":
